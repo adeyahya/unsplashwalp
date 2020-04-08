@@ -1,45 +1,26 @@
-extern crate reqwest;
-extern crate tokio;
-extern crate dirs;
-
 use std::process::Command;
-use std::io::prelude::*;
-use std::fs::File;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let home_dir = dirs::home_dir().unwrap();
-    let mut response = reqwest::get("https://source.unsplash.com/random")
-    .await?;
+extern crate regex;
+extern crate wallpaper;
 
-    let fname_string = response
-            .url()
-            .path_segments()
-            .and_then(|segments| segments.last())
-            .and_then(|name| if name.is_empty() { None } else { Some(name) })
-            .unwrap_or("tmp.bin");
+use regex::Regex;
 
-    println!("file to download: '{}'", fname_string);
-    let fname = home_dir.join("unsplashwalp").join(fname_string);
-    let fname_string = home_dir.join("unsplashwalp").join(fname_string).into_os_string().into_string().unwrap();
-    println!("will be located under: '{:?}'", fname);
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::new("xdpyinfo").output()?;
 
-    let mut buffer = File::create(fname)?;
+    let output = String::from_utf8(output.stdout)?;
 
-    while let Some(chunk) = response.chunk().await? {
-        buffer.write(&chunk)?;
+    let re = Regex::new(r"dimensions:+\s*(\S+)").unwrap();
+    let caps = re.captures(&output).unwrap();
+    let mut url = String::new();
+    match caps.get(1) {
+        Some(resolution) => {
+            url = format!("https://source.unsplash.com/{}/?woman", resolution.as_str());
+        }
+        None => {}
     }
 
-    let mut child = Command::new("gsettings")
-                        .arg("set")
-                        .arg("org.gnome.desktop.background")
-                        .arg("picture-uri")
-                        .arg(fname_string)
-                        .spawn()
-                        .expect("failed to execute child");
+    wallpaper::set_from_url(&url).unwrap();
 
-    child.wait().expect("failed to wait on child");
-
-    println!("body = {:?}", response.url());
     Ok(())
 }
